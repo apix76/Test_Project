@@ -1,7 +1,9 @@
-package Token
+package token
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"log"
@@ -10,9 +12,6 @@ import (
 )
 
 type Token struct {
-	Guid           string
-	Refresh        string
-	Access         string
 	Key            string
 	ExpTimeAccess  int
 	ExpTimeRefresh int
@@ -24,37 +23,39 @@ type Claims struct {
 	IP     string
 }
 
-func (t *Token) CreateRefreshToken(ip string) (string, int64) {
-	idSession := rand.Int63()
+func (t *Token) CreateRefreshToken(ip, guid string) (string, string) {
+	idSessionInt := rand.Int63()
+	idSession := fmt.Sprintf("%v", idSessionInt)
+
 	RefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
-		"exp":      time.Now().Add(time.Duration(t.ExpTimeRefresh) * time.Minute),
+		"exp":      jwt.NewNumericDate(time.Now().Add(time.Duration(t.ExpTimeRefresh) * time.Minute)),
 		"jti":      idSession,
-		"guid":     t.Guid,
+		"guid":     guid,
 		"ipClient": ip,
 	})
-	token, err := RefreshToken.SignedString(t.Key)
+	token, err := RefreshToken.SignedString([]byte(t.Key))
 	if err != nil {
 		log.Fatal(err)
 	}
 	return token, idSession
 }
 
-func (t *Token) CreateAccessToken(ip string, idSession int64) string {
-	AccessToken := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
-		"exp":      time.Now().Add(time.Duration(t.ExpTimeAccess) * time.Minute),
+func (t *Token) CreateAccessToken(ip, guid, idSession string) string {
+	AccessToken := jwt.NewWithClaims(jwt.SigningMethodRS512, jwt.MapClaims{
+		"exp":      jwt.NewNumericDate(time.Now().Add(time.Duration(t.ExpTimeAccess) * time.Minute)),
 		"jti":      idSession,
-		"guid":     t.Guid,
+		"guid":     guid,
 		"ipClient": ip,
 	})
-	token, err := AccessToken.SignedString(t.Key)
+	token, err := AccessToken.SignedString([]byte(t.Key))
 	if err != nil {
 		log.Fatal(err)
 	}
 	return token
 }
 
-func (t *Token) Check(token string) error {
-	err := bcrypt.CompareHashAndPassword([]byte(token), []byte(t.Refresh))
+func (t *Token) Check(hashtoken, Refresh string) error {
+	err := bcrypt.CompareHashAndPassword([]byte(hashtoken), t.HashSHA256(Refresh))
 	return err
 }
 
@@ -63,7 +64,7 @@ func (t *Token) Parse(token string) (Claims, error) {
 		return []byte(t.Key), nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		return Claims{}, err
 	}
 
 	claims, ok := Token.Claims.(jwt.MapClaims)
@@ -76,4 +77,9 @@ func (t *Token) Parse(token string) (Claims, error) {
 		IP:     claims["ipClient"].(string),
 	}
 	return claim, err
+}
+
+func (t *Token) HashSHA256(str string) []byte {
+	hash := sha256.Sum256([]byte(str))
+	return hash[:]
 }

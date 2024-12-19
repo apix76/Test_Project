@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option go_package = "TestProject/ProtoDirectory";
+
+service Token {
+  rpc CreateToken (Guid) returns (Tokens){}
+  rpc RefreshToken (Tokens) returns (Tokens){}
+}
+
+message Guid {
+  string guid = 1;
+}
+
+message Tokens{
+  string AccessToken = 1;
+  string RefreshToken = 2;
+}
