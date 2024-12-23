@@ -1,6 +1,7 @@
 package token
 
 import (
+	"crypto/rsa"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -8,13 +9,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 )
 
 type Token struct {
-	Key            string
 	ExpTimeAccess  int
 	ExpTimeRefresh int
+	PublicKey      *rsa.PublicKey
+	PrivateKey     *rsa.PrivateKey
 }
 
 type Claims struct {
@@ -23,17 +26,29 @@ type Claims struct {
 	IP     string
 }
 
+func TokenKey(private, public string) (*rsa.PrivateKey, *rsa.PublicKey, error) {
+	privatekey, err := ParsePrivateKey(private)
+	if err != nil {
+		return nil, nil, err
+	}
+	publickey, err := ParsePublicKey(public)
+	if err != nil {
+		return nil, nil, err
+	}
+	return privatekey, publickey, nil
+}
+
 func (t *Token) CreateRefreshToken(ip, guid string) (string, string) {
 	idSessionInt := rand.Int63()
 	idSession := fmt.Sprintf("%v", idSessionInt)
 
-	RefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+	RefreshToken := jwt.NewWithClaims(jwt.SigningMethodRS512, jwt.MapClaims{
 		"exp":      jwt.NewNumericDate(time.Now().Add(time.Duration(t.ExpTimeRefresh) * time.Minute)),
 		"jti":      idSession,
 		"guid":     guid,
 		"ipClient": ip,
 	})
-	token, err := RefreshToken.SignedString([]byte(t.Key))
+	token, err := RefreshToken.SignedString(t.PrivateKey)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,7 +62,7 @@ func (t *Token) CreateAccessToken(ip, guid, idSession string) string {
 		"guid":     guid,
 		"ipClient": ip,
 	})
-	token, err := AccessToken.SignedString([]byte(t.Key))
+	token, err := AccessToken.SignedString(t.PrivateKey)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,14 +75,18 @@ func (t *Token) Check(hashtoken, Refresh string) error {
 }
 
 func (t *Token) Parse(token string) (Claims, error) {
-	Token, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		return []byte(t.Key), nil
+	tokenParse, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			err := errors.New("Invalid signing method. Expected RSA")
+			return nil, err
+		}
+		return t.PublicKey, nil
 	})
 	if err != nil {
 		return Claims{}, err
 	}
 
-	claims, ok := Token.Claims.(jwt.MapClaims)
+	claims, ok := tokenParse.Claims.(jwt.MapClaims)
 	if !ok {
 		return Claims{}, errors.New("Empty claims")
 	}
@@ -82,4 +101,34 @@ func (t *Token) Parse(token string) (Claims, error) {
 func (t *Token) HashSHA256(str string) []byte {
 	hash := sha256.Sum256([]byte(str))
 	return hash[:]
+}
+
+func ParsePrivateKey(private string) (*rsa.PrivateKey, error) {
+	filecon, err := os.ReadFile(private)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	privatekey, err := jwt.ParseRSAPrivateKeyFromPEM(filecon)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return privatekey, err
+}
+
+func ParsePublicKey(public string) (*rsa.PublicKey, error) {
+	filecon, err := os.ReadFile(public)
+	if err != nil {
+		return nil, err
+	}
+
+	publickey, err := jwt.ParseRSAPublicKeyFromPEM(filecon)
+	if err != nil {
+		return nil, err
+	}
+
+	return publickey, err
 }

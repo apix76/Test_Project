@@ -19,23 +19,29 @@ type Conf struct {
 	Port string
 	//	GetPath         string
 	//	RefreshPath     string
-	KeyVerification string
-	PgsqlNameServe  string
-	ExpTimeAccess   int
-	ExpTimeRefresh  int
+	PublicKey      string
+	PrivateKey     string
+	PgsqlNameServe string
+	ExpTimeAccess  int
+	ExpTimeRefresh int
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	con := NewConf()
 	useCase := usecase.UseCase{
 		Token: token.Token{
-			Key:            con.KeyVerification,
 			ExpTimeAccess:  con.ExpTimeAccess,
 			ExpTimeRefresh: con.ExpTimeRefresh,
 		},
 	}
 
 	var err error
+	useCase.Token.PrivateKey, useCase.Token.PublicKey, err = token.TokenKey(con.PrivateKey, con.PublicKey)
+	if err != nil {
+		log.Fatal(err)
+	}
 	useCase.DB, err = db.New(con.PgsqlNameServe)
 	if err != nil {
 		log.Fatal(err)
@@ -50,11 +56,12 @@ func main() {
 	grpcServer := grpc.NewServer()
 	ProtoDirectory.RegisterTokenServer(grpcServer, serv)
 
-	fmt.Println("Start")
 	err = grpcServer.Serve(l)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("Start")
 }
 
 func NewConf() Conf {

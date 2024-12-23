@@ -13,15 +13,16 @@ import (
 )
 
 type Conf struct {
-	CertFile        string
-	Keyfile         string
-	Port            string
-	GetPath         string
-	RefreshPath     string
-	KeyVerification string
-	PgsqlNameServe  string
-	ExpTimeAccess   int
-	ExpTimeRefresh  int
+	CertFile       string
+	Keyfile        string
+	Port           string
+	GetPath        string
+	RefreshPath    string
+	PublicKey      string
+	PrivateKey     string
+	PgsqlNameServe string
+	ExpTimeAccess  int
+	ExpTimeRefresh int
 }
 
 type HTTPHandler struct {
@@ -34,7 +35,6 @@ func main() {
 	con := NewConf()
 	useCase := usecase.UseCase{
 		Token: token.Token{
-			Key:            con.KeyVerification,
 			ExpTimeAccess:  con.ExpTimeAccess,
 			ExpTimeRefresh: con.ExpTimeRefresh,
 		},
@@ -42,6 +42,11 @@ func main() {
 
 	var err error
 	useCase.DB, err = db.New(con.PgsqlNameServe)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	useCase.Token.PrivateKey, useCase.Token.PublicKey, err = token.TokenKey(con.PrivateKey, con.PublicKey)
 	if err != nil {
 		log.Fatal(err)
 	}

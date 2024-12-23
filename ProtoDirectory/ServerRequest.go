@@ -22,11 +22,11 @@ func (s Server) CreateToken(ctx context.Context, guid *Guid) (*Tokens, error) {
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
-		if ip := md.Get("X-Real-Ip")[0]; ip != "" {
-			s.UseCase.UserIp = ip
+		if ip := md.Get("X-Real-Ip"); ip != nil {
+			s.UseCase.UserIp = ip[0]
 		}
-		if ip := md.Get("X-Forwarded-For")[0]; ip != "" || s.UseCase.UserIp == "" {
-			s.UseCase.UserIp = md.Get("X-Forwarded-For")[0]
+		if ip := md.Get("X-Forwarded-For"); ip != nil && s.UseCase.UserIp == "" {
+			s.UseCase.UserIp = ip[0]
 		}
 	}
 
